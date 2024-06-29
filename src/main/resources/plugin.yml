@@ -1,0 +1,4 @@
+name: SleepInvisible
+version: '${project.version}'
+main: com.kumo0621.github.sleepinvisible.SleepInvisible
+api-version: '1.21'
