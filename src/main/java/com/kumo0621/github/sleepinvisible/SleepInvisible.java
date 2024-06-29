@@ -1,7 +1,7 @@
 package com.kumo0621.github.sleepinvisible;
 
 import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
+import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -9,6 +9,8 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.HashMap;
@@ -18,6 +20,7 @@ public final class SleepInvisible extends JavaPlugin implements Listener {
 
     private HashMap<UUID, Long> lastActionTime = new HashMap<>();
     private HashMap<UUID, Boolean> protectedPlayers = new HashMap<>();
+    private HashMap<UUID, Long> movementTime = new HashMap<>();
     private long idleThreshold;
     private long moveThreshold;
     private String protectionEnabledMessage;
@@ -42,11 +45,28 @@ public final class SleepInvisible extends JavaPlugin implements Listener {
     @EventHandler
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
-        lastActionTime.put(player.getUniqueId(), System.currentTimeMillis());
-        if (protectedPlayers.containsKey(player.getUniqueId())) {
-            protectedPlayers.remove(player.getUniqueId());
-            player.setGameMode(GameMode.SURVIVAL); // サバイバルモードに戻す
-            Bukkit.broadcastMessage(player.getName() + " ←こいつ帰ってきた");
+        UUID playerId = player.getUniqueId();
+        long currentTime = System.currentTimeMillis();
+
+        if (!lastActionTime.containsKey(playerId)) {
+            lastActionTime.put(playerId, currentTime);
+        }
+
+        if (protectedPlayers.containsKey(playerId)) {
+            if (!movementTime.containsKey(playerId)) {
+                movementTime.put(playerId, currentTime);
+            } else {
+                long moveStart = movementTime.get(playerId);
+                if (currentTime - moveStart >= moveThreshold) {
+                    protectedPlayers.remove(playerId);
+                    movementTime.remove(playerId);
+                    Bukkit.broadcastMessage(player.getName() + " ←こいつ帰ってきた");
+                    removeProtection(player);
+                }
+            }
+        } else {
+            lastActionTime.put(playerId, currentTime);
+            movementTime.remove(playerId);
         }
     }
 
@@ -56,6 +76,7 @@ public final class SleepInvisible extends JavaPlugin implements Listener {
         UUID playerId = event.getPlayer().getUniqueId();
         lastActionTime.remove(playerId);
         protectedPlayers.remove(playerId);
+        movementTime.remove(playerId);
     }
 
     // 放置状態をチェックするタスクを開始
@@ -75,11 +96,32 @@ public final class SleepInvisible extends JavaPlugin implements Listener {
                         if (!protectedPlayers.containsKey(playerId)) {
                             protectedPlayers.put(playerId, true);
                             Bukkit.broadcastMessage(player.getName() + " ←こいついなくなったお");
-                            player.setGameMode(GameMode.SPECTATOR); // スペクテーターモードに変更
+                            applyProtection(player);
                         }
+                    } else if (protectedPlayers.containsKey(playerId)) {
+                        // moveThresholdを過ぎて動いていない場合の処理は必要ない
+                        // プレイヤーが動き続けた場合の処理はonPlayerMoveで行われる
                     }
                 }
             }
         }.runTaskTimer(this, 0L, 20L); // 1秒ごと（20ティック）に実行
+    }
+
+    // 無敵のエフェクトをプレイヤーに適用
+    private void applyProtection(Player player) {
+        player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 255));
+        player.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, Integer.MAX_VALUE, 255));
+        player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, Integer.MAX_VALUE, 255));
+        player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, Integer.MAX_VALUE, 255));
+        player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, Integer.MAX_VALUE, 255));
+    }
+
+    // 無敵のエフェクトをプレイヤーから解除
+    private void removeProtection(Player player) {
+        player.removePotionEffect(PotionEffectType.REGENERATION);
+        player.removePotionEffect(PotionEffectType.RESISTANCE);
+        player.removePotionEffect(PotionEffectType.FIRE_RESISTANCE);
+        player.removePotionEffect(PotionEffectType.WATER_BREATHING);
+        player.removePotionEffect(PotionEffectType.INVISIBILITY);
     }
 }
